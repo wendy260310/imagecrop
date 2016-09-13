@@ -9,8 +9,11 @@ var cropModule = (function () {
     var canvas, ctx;
     //scale
     var scale = 1.0;
-    //
-    var aspectRatio;
+    var maxScale;
+    //init aspectRatio
+    var aspectRatio = 2.0;
+
+    var canvasWidth, canvasHeight;
 
     var inputDom;
 
@@ -60,7 +63,7 @@ var cropModule = (function () {
     }
 
     function reset() {
-        scale = 1.0;
+        scale = maxScale;
         drawImg();
     }
 
@@ -71,6 +74,8 @@ var cropModule = (function () {
         }
         if (oriEvent.deltaY > 0) {
             scale += 0.1;
+            if (scale > maxScale)
+                scale = maxScale;
         } else {
             scale -= 0.1;
             if (scale <= 0.1) {
@@ -88,6 +93,8 @@ var cropModule = (function () {
                 $('body').addClass('on-blur');
             });
             img.onload = function () {
+
+                computeScale();
                 drawImg();
                 $('#ori-width').get(0).innerText = "原图宽度:" + img.width;
                 $('#ori-height').get(0).innerText = "原图高度:" + img.height;
@@ -99,14 +106,29 @@ var cropModule = (function () {
         }
     }
 
-    function computeScale(){}
+    function computeScale() {
+        // width first
+        if (img.height * aspectRatio > img.width) {
+            canvasWidth = $('#crop-canvas').width();
+            canvasHeight = Math.floor(canvasWidth / aspectRatio);
+        } else {
+            canvasHeight = $('#crop-canvas').height();
+            canvasWidth = Math.floor(canvasHeight * aspectRatio);
+        }
+        maxScale = new Number(canvasWidth / img.width);
+        scale = maxScale;
+        if (scale >= 1.0)
+            scale = 1.0
+        canvas.width = canvasWidth;
+        canvas.height = canvasHeight;
+    }
 
     function drawImg() {
 
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.drawImage(img, 0, 0, img.width * scale, img.height * scale);
         //show scale ratio
-        $("#scale-ratio").get(0).innerText = "缩放比例:" + scale.toFixed(2);
+        $("#scale-ratio").get(0).innerText = "缩放比例:" + scale.toFixed(4);
     }
 
     function bindActon() {
@@ -122,6 +144,7 @@ var cropModule = (function () {
                 $('body').removeClass('on-blur');
                 $(window).unbind('wheel');
                 scale = 1.0;
+                aspectRatio = 2.0;
             });
         });
 
