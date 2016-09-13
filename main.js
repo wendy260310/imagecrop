@@ -7,7 +7,13 @@ var cropModule = (function () {
     //img
     var img = new Image();
     var canvas, ctx;
+    //scale
+    var scale = 1.0;
     //
+    var aspectRatio;
+
+    var inputDom;
+
     function init() {
         appendDom();
         canvas = $('#crop-canvas')[0];
@@ -18,21 +24,30 @@ var cropModule = (function () {
     function appendDom() {
         var cropPopUpCss = "<style type='text/css'>" +
             ".not-display{ display:none;} " +
-            "#crop-pop-up{ position: fixed;top: 10%;left: 15%;width: 70% ;height: 70%;z - index:1000;border: solid 2px;background: white;}" +
+            "#crop-pop-up{ position: absolute;top: 10%;left: 15%;width: 70% ;height: 70%;z - index:10;border: solid 2px;background: white;}" +
             ".on-blur {background-color:gray}" +
-            "#crop-canvas { display : inline-block ; float : left;padding : 20px }" +
-            "#crop-options { display : inline-block ; float:right; margin-right: 25px; margin-top: 25px }" +
+            "#canvas-container {  float : left; margin : 10% ; height: 60% ; width: 60%; border: solid 1px ; position : absolute ; }" +
+            "#cut-frame,#crop-canvas {width: 100%;height: 100%; position : absolute; top :0 ; left:0 }" +
+            "#crop-canvas { z-index : 100 ; background : grey}" +
+            "#crop-options {  float:right; margin-right: 25px; margin-top: 25px }" +
             ".close-pop-up {float:right;margin-top:-10px;margin-right:-10px;cursor:pointer;color:#fff;border: 1px solid #AEAEAE;border-radius: 30px;background: #605F61;font-size: 31px;font-weight: bold;display: inline-block;line-height: 0px;padding: 11px 3px; } " +
             ".close-pop-up:before{ content : '×' }" +
+            ".c-b { clear : both}" +
             "</style>";
 
         var cropPopUpTemplate = "<div class='not-display' id='crop-pop-up'>" +
-            "<div><a class='close-pop-up'></a></div>" +
+            "<div><a class='close-pop-up'></a><div class='c-b'></div></div>" +
+            "<div id='canvas-container'>" +
             "<canvas id='crop-canvas'></canvas>" +
+            "<div id='cut-frame'></div>" +
+            "</div>" +
             "<div id='crop-options'>" +
             "<div id='ori-width'></div>" +
             "<div id='ori-height'></div>" +
             "<hr>" +
+            "<div id='scale-ratio'>缩放比例:1.0</div>" +
+            "<hr>" +
+            "<input type='button' value='保存' id='crop-save'><input type='button' value='重置' style='margin-left: 10px' id='crop-reset'>" +
             "</div>" +
             "</div>"
 
@@ -44,10 +59,32 @@ var cropModule = (function () {
         $('body').append(templateDom);
     }
 
+    function reset() {
+        scale = 1.0;
+        drawImg();
+    }
+
+    function scrollActionHandler(event) {
+        var oriEvent = event;
+        if (event.originalEvent) {
+            oriEvent = event.originalEvent;
+        }
+        if (oriEvent.deltaY > 0) {
+            scale += 0.1;
+        } else {
+            scale -= 0.1;
+            if (scale <= 0.1) {
+                scale = 0.1;
+            }
+        }
+        drawImg();
+    }
+
     function loadImage(input) {
         reader.onload = function (event) {
             //show canvas
             $('#crop-pop-up').fadeIn(200, function () {
+                $(window).bind('wheel', scrollActionHandler);
                 $('body').addClass('on-blur');
             });
             img.onload = function () {
@@ -62,11 +99,14 @@ var cropModule = (function () {
         }
     }
 
-    function drawImg() {
-        canvas.width = 400;
-        canvas.height = 180;
+    function computeScale(){}
 
-        ctx.drawImage(img, 0, 0, img.width * 0.4, img.height * 0.4);
+    function drawImg() {
+
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0, img.width * scale, img.height * scale);
+        //show scale ratio
+        $("#scale-ratio").get(0).innerText = "缩放比例:" + scale.toFixed(2);
     }
 
     function bindActon() {
@@ -74,14 +114,18 @@ var cropModule = (function () {
         $('.image-uploader').each(function () {
             $(this).on('change', function () {
                 loadImage(this);
+                inputDom = this;
             });
         });
-
         $('.close-pop-up').on('click', function () {
             $('#crop-pop-up').fadeOut(200, function () {
                 $('body').removeClass('on-blur');
+                $(window).unbind('wheel');
+                scale = 1.0;
             });
         });
+
+        $('#crop-reset').on('click', reset);
     }
 
     return {
