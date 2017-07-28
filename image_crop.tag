@@ -1,9 +1,15 @@
 <%@ taglib prefix="c" uri="http://java.sun.com/jsp/jstl/core" %>
+<%@ taglib prefix="bw" uri="/tags" %>
 <%@ tag pageEncoding="UTF-8" %>
 <%@ attribute name="doAfterPopUpClose" required="false" %>
 <%@ attribute name="doAfterFinishCropImg" required="true" %>
-<%@ attribute name="ratioOptions" required="true" type="java.util.List" %>
-<%@ attribute name="ratioNames" required="true" type="java.util.List" %>
+<%@ attribute name="ratioOptions" required="true" type="java.util.Map" %>
+<%@ attribute name="imageInfoHolder" required="false" fragment="true" %>
+<%@ attribute name="imageInfoInput" required="false" fragment="true" %>
+<%@ attribute name="fillInfoHolderWhenSave" required="false" %>
+<%@ attribute name="clearImageInfoInput" required="false" %>
+<%@ attribute name="imageRatioChangedCallBack" required="false" %>
+<%@ attribute name="checkInputCallBack" required="false" %>
 <%-- import only once --%>
 <c:if test="${ empty bwImgCropTemplateImported }">
     <c:set var="bwImgCropTemplateImported" value="1" scope="request"></c:set>
@@ -27,6 +33,7 @@
             margin: 50px 50px 50px 50px;
             background: #fff;
             border-radius: 5px;
+            overflow: auto;
         }
 
         #bw-upload-img-pop-up canvas {
@@ -37,8 +44,7 @@
 
         #bw-edit-img-option {
             display: inline-block;
-            top: 20px;
-            position: absolute;
+            margin-top: 20px;
         }
 
         #bw-upload-img-pop-up > a {
@@ -59,6 +65,12 @@
             list-style: none;
         }
 
+        #bw-cropped-img-container ul::after {
+            display: block;
+            content: '';
+            clear: both;
+        }
+
         #bw-cropped-img-container li {
             width: 150px;
             position: relative;
@@ -66,20 +78,37 @@
             padding-right: 10px;
         }
 
-        #bw-cropped-img-container li a {
+        .remove-cropped-img {
             position: absolute;
             top: -5px;
             right: 10px;
             font-size: 20px;
         }
 
-        #bw-cropped-img-container li a:hover {
+        .remove-cropped-img:hover {
             cursor: pointer;
             background-color: #468847;
         }
 
         .bw-upload-img-high-light {
             background-color: #468847;
+        }
+
+        .m-w-100 {
+            max-width: 100px;
+        }
+
+        .not-display {
+            display: none;
+        }
+
+        .p-d-10 {
+            padding: 10px;
+            max-width: 150px;
+        }
+
+        .img-selected {
+            border: solid 2px #4bb1cf;
         }
 
         #bw-cropped-img-container li img {
@@ -107,20 +136,38 @@
         });
 
         if (typeof bwShowUploadPopUp !== 'function') {
-            window.bwShowUploadPopUp = function (doBeforeShowUploadPopUp) {
+            window.bwShowUploadPopUp = function (doBeforeShowUploadPopUp, index) {
 
                 if (typeof doBeforeShowUploadPopUp === 'function')
                     doBeforeShowUploadPopUp();
+
                 $('#bw-upload-img-overlay').css('visibility', 'visible');
-                window.imgCrop.resetCanvas().setCanvasWidthAndHeight(window.imgRatioOptions[parseInt($('select', '#bw-edit-img-option').val())].x, window.imgRatioOptions[parseInt($('select', '#bw-edit-img-option').val())].y)
+                window.imgCrop.resetCanvas().setCanvasWidthAndHeight(window.imgRatioOptions[$('select', '#bw-edit-img-option').val()].x, window.imgRatioOptions[$('select', '#bw-edit-img-option').val()].y)
                         .setShowImgInfoCallBack(function (width, height) {
                             $($('#bw-edit-img-option').find('.control-group').get(1)).find('label').get(1).innerHTML = width + "*" + height;
                         }, function (scale) {
-                            $($('#bw-edit-img-option').find('.control-group').get(2)).find('input').val(scale);
-                        }, function (ratio) {
-                            $($('#bw-edit-img-option').find('.control-group').get(3)).find('input').val(ratio);
+                            $('#scale-range').find('input').val(scale);
+                            $('#scale-range').find('label').eq(1).text($('#scale-range').find('input').val());
+
+                        }, function (width, height, ratio) {
+                            $('#ratio-info').find('input').get(0).value = width;
+                            $('#ratio-info').find('input').get(1).value = height;
+                            $('#ratio-info').find('label').get(1).innerText = ratio;
                         });
                 $('ul', '#bw-cropped-img-container').empty();
+                $('#bw-ori-img-container').empty();
+                $('#compress-check-box').prop('checked', true);
+                if (index !== undefined) {
+                    $('#bw-cropped-img-container').data('edit-item-index', index);
+                } else {
+                    $('#bw-cropped-img-container').removeData("edit-item-index");
+
+                    <c:if test="${not empty imageRatioChangedCallBack}">
+                    if (typeof ${imageRatioChangedCallBack} === 'function') {
+                        ${imageRatioChangedCallBack}($('#img-style-select').val());
+                    }
+                    </c:if>
+                }
             }
         }
 
@@ -133,6 +180,8 @@
                     $($('#bw-edit-img-option').find('.control-group').get(1)).find('label').get(1).innerHTML = '';
                     $($('#bw-edit-img-option').find('.control-group').get(2)).find('input').val("");
                     $($('#bw-edit-img-option').find('.control-group').get(3)).find('input').val("");
+                    imgCrop.resetCanvas();
+                    $("#use-ori-img").prop('disabled', true).prop('checked', false).trigger('change');
                     //empty input file
                     $('#bw-edit-img-option').find('input:file').val("");
                     //empty crop list
@@ -144,20 +193,25 @@
             }
         }
         if (typeof imgRatioOptions === "undefined") {
-            window.imgRatioOptions = [
-                <c:forEach items="${ratioOptions}" var="option" varStatus="loop">
-                {x:${option.x}, y:${option.y}}${loop.last?"":","}
+            window.imgRatioOptions = {
+                <c:forEach items="${ratioOptions}" var="keySet" varStatus="outloop">
+                "${keySet.key.toString()}": {
+                    <c:forEach items="${keySet.value}" var="option" varStatus="loop">
+                    "${option.key}":${option.value}
+                    ${loop.last?"":","}
+                    </c:forEach>
+                }${outloop.last?"":","}
                 </c:forEach>
-            ]
+            }
         }
         if (typeof imgCrop === "undefined") {
             window.imgCrop = (function () {
                 var scale;//缩放比例
                 var ratio;//截图长宽比
                 var moving;//用户是否在移动图片
+                var listenToMouseMove;
                 var imgLoaded;//是否已经加载图片.图片在没有加载的情况下,canvas是不会响应mouse event.
                 var offsetX, offsetY;//图片相对于canvas的偏移,因为有可能有多次移动,需要记录下上一次移动到哪儿了
-                var widthFirst;//计算ratio的时候是不是以width为参考,如果以width为参考,左右移动图片将会失败
                 var mouseDownPosX, mouseDownPosY;
                 var canvasWidth, canvasHeight;
                 var fileReader;//用来读取图片
@@ -168,6 +222,7 @@
                 var canvas, ctx;
 
                 function _readImgIntoCanvas(file) {
+                    _resetParam();
                     fileReader.onload = function (event) {
                         img.src = event.target.result;
                         img.onload = function () {
@@ -192,35 +247,97 @@
 
                 function _bindAction() {
                     $(canvas).mousemove(function (event) {
-                        if (imgLoaded && moving) {
+                        if (imgLoaded && moving && listenToMouseMove) {
 
-                            var x = widthFirst ? 0 : (offsetX + event.pageX - mouseDownPosX);
-                            var y = widthFirst ? (offsetY + event.pageY - mouseDownPosY) : 0;
+                            var x = offsetX + event.pageX - mouseDownPosX;
+                            var y = offsetY + event.pageY - mouseDownPosY;
                             _drawImg(x, y);
 
                         }
                     }).mouseup(function (event) {
                         moving = false;
-                        //如果当前显示以width为准,X方向是没有偏移的
-                        offsetX = widthFirst ? 0 : (offsetX + event.pageX - mouseDownPosX);
-                        offsetY = widthFirst ? (offsetY + event.pageY - mouseDownPosY) : 0;
+
+                        offsetX = offsetX + event.pageX - mouseDownPosX;
+                        offsetY = offsetY + event.pageY - mouseDownPosY;
 
                     }).mousedown(function (event) {
                         mouseDownPosX = event.pageX;
                         mouseDownPosY = event.pageY;
                         moving = true;
                     }).mouseout(function (event) {
-                        if (imgLoaded && moving) {
+                        if (imgLoaded && moving && listenToMouseMove) {
 
                             moving = false;
-                            var x = widthFirst ? 0 : (offsetX + event.pageX - mouseDownPosX);
-                            var y = widthFirst ? (offsetY + event.pageY - mouseDownPosY) : 0;
+                            var x = offsetX + event.pageX - mouseDownPosX;
+                            var y = offsetY + event.pageY - mouseDownPosY;
                             _drawImg(x, y);
-                            offsetX = widthFirst ? 0 : (offsetX + event.pageX - mouseDownPosX);
-                            offsetY = widthFirst ? (offsetY + event.pageY - mouseDownPosY) : 0;
+                            offsetX = offsetX + event.pageX - mouseDownPosX;
+                            offsetY = offsetY + event.pageY - mouseDownPosY;
 
                         }
                     });
+
+                    $('#scale-range').off('change').on('change', 'input', (event)=> {
+                        $(event.currentTarget).next().val(event.currentTarget.value);
+                        scale = event.currentTarget.value;
+                        $(event.currentTarget).next().text(scale);
+                        _resetParam();
+                        if (imgLoaded) {
+                            _drawImg(0, 0);
+                        }
+                    });
+
+                    $('#ratio-info').off('change').on('change', 'input', (event)=> {
+                        let $controls = $(event.currentTarget).closest('.controls');
+                        let width = parseInt($controls.find('input').eq(0).val());
+                        let height = parseInt($controls.find('input').eq(1).val());
+                        _setCanvasWidthAndHeight(width, height);
+                    });
+
+                    $('#use-ori-img').on('change', (event)=> {
+                        if ($(event.currentTarget).prop('checked')) {
+                            _resetParam();
+                            let $selectImg = $('#bw-ori-img-container').find('.img-selected');
+                            $('#scale-range').find('input').eq(0).val(1);
+                            canvasWidth = $selectImg.data('width');
+                            canvasHeight = $selectImg.data('height');
+                            scale = 1;
+                            _showImgInfo();
+                            //disable other selection
+                            $('#ratio-info').find('input').prop('disabled', true);
+                            $('#scale-range').find('input').prop('disabled', true);
+                            $("#img-style-select").prop('disabled', true);
+                            $('#compress-check-box').prop('disabled', true);
+                            //disable mouse event
+                            listenToMouseMove = false;
+                        } else {
+                            //enable other selection
+                            $('#ratio-info').find('input').prop('disabled', false);
+                            $('#scale-range').find('input').prop('disabled', false);
+                            $("#img-style-select").prop('disabled', false);
+                            $('#compress-check-box').prop('disabled', false);
+
+                            listenToMouseMove = true;
+
+                            $('#img-style-select').click();
+                        }
+                    });
+
+
+                    $('#bw-ori-img-container').off('click').on('click', 'span', (event)=> {
+                        if (!$(event.currentTarget).find('img').hasClass('img-selected')) {
+                            $(event.delegateTarget).find('img').removeClass('img-selected');
+                            $(event.currentTarget).find('img').addClass('img-selected');
+                            <c:if test="${not empty clearImageInfoInput}">
+                            if (typeof ${clearImageInfoInput} === 'function')
+                                ${clearImageInfoInput}()
+                            </c:if>
+                            _readImgIntoCanvas($('#img-input').get(0).files[$(event.currentTarget).index()]);
+                            //主要是保证一次处理的宽高比相同
+                            $('#ratio-info').find('input').eq(0).trigger('change');
+                        }
+                    });
+
                 }
 
                 function _showImgInfo() {
@@ -229,43 +346,52 @@
                     if (_imgScaleCallback !== undefined)
                         _imgScaleCallback(scale);
                     if (_imgRatioCallBack !== undefined)
-                        _imgRatioCallBack(ratio);
+                        _imgRatioCallBack(canvasWidth, canvasHeight, ratio);
                 }
 
                 function _resetParam() {
                     offsetX = 0;
                     offsetY = 0;
                     moving = false;
+                    listenToMouseMove = true;
 
 
                     mouseDownPosX = 0;
                     mouseDownPosY = 0;
 
-                    widthFirst = false;
                     //clear canvas
                     ctx.clearRect(0, 0, canvas.width, canvas.height);
                 }
 
-                function _computeScale() {
-                    //说明高需要截取一部分
-                    if (img.height * ratio > img.width) {
-                        //这里说明 canvasWidth不会大于img.width,也就是说不会出现放大图片的情况
-                        canvasWidth = (img.width < canvasWidth) ? img.width : canvasWidth;
-                        canvasHeight = Math.floor(canvasWidth / ratio);
-                        scale = new Number(canvasWidth / img.width).toFixed(5)
-                        widthFirst = true;
-                    }
-                    else {
-                        canvasHeight = (img.height < canvasHeight) ? img.height : canvasHeight;
-                        canvasWidth = Math.floor(canvasHeight * ratio);
-                        scale = new Number(canvasHeight / img.height).toFixed(5)
-                        widthFirst = false;
+                function _setCanvasWidthAndHeight(width, height) {
+                    _resetParam();
+                    canvasWidth = width;
+                    canvasHeight = height;
+                    ratio = new Number(canvasWidth / canvasHeight).toFixed(5);
+                    if (imgLoaded) {
+                        _computeScale();
+                        _showImgInfo();
+                        _drawImg(0, 0);
                     }
                 }
 
-                function _getCanvasBytes() {
+                function _computeScale() {
+                    //图片的比较宽
+                    if (img.width * canvasHeight > img.height * canvasWidth) {
+                        canvasWidth = img.width > canvasWidth ? canvasWidth : img.width;
+                        canvasHeight = img.width > canvasWidth ? canvasHeight : Math.floor(canvasWidth * img.height / img.width);
+                        scale = new Number(canvasWidth / img.width).toFixed(5);
+                    } else {
+                        canvasHeight = img.height > canvasHeight ? canvasHeight : img.height;
+                        canvasWidth = img.height > canvasHeight ? canvasWidth : Math.floor(canvasHeight * img.width / img.height);
+                        scale = new Number(canvasHeight / img.height).toFixed(5);
+                    }
+                }
+
+                function _getCanvasBytes(compress) {
                     if (imgLoaded) {
-                        return canvas.toDataURL();
+
+                        return compress ? canvas.toDataURL("image/webp", 0.2) : canvas.toDataURL("image/webp");
                     }
                     return undefined;
                 }
@@ -287,15 +413,7 @@
                         return this;
                     },
                     setCanvasWidthAndHeight: function (width, height) {
-                        _resetParam();
-                        canvasWidth = width;
-                        canvasHeight = height;
-                        ratio = new Number(canvasWidth / canvasHeight).toFixed(5);
-                        if (imgLoaded) {
-                            _computeScale();
-                            _showImgInfo();
-                            _drawImg(0, 0);
-                        }
+                        _setCanvasWidthAndHeight(width, height);
                         return this;
                     },
                     setShowImgInfoCallBack: function (imgOriInfoCallBack, imgScaleCallback, imgRatioCallBack) {
@@ -309,8 +427,8 @@
                         _resetParam();
                         return this;
                     },
-                    getCroppedImg: function () {
-                        return _getCanvasBytes();
+                    getCroppedImg: function (compress) {
+                        return _getCanvasBytes(compress);
                     }
                 }
             })();
@@ -318,11 +436,46 @@
 
         if (typeof bwImageRatioChanged !== 'function') {
             window.bwImageRatioChanged = function (item) {
-                window.imgCrop.setCanvasWidthAndHeight(window.imgRatioOptions[parseInt($(item).val())].x, window.imgRatioOptions[parseInt($(item).val())].y);
+                window.imgCrop.setCanvasWidthAndHeight(window.imgRatioOptions[$(item).val()].x, window.imgRatioOptions[$(item).val()].y);
+                <c:if test="${not empty imageRatioChangedCallBack}">
+                if (typeof ${imageRatioChangedCallBack} === 'function') {
+                    ${imageRatioChangedCallBack}(item.value);
+                }
+                </c:if>
             }
         }
         if (typeof bwUploadImgClicked !== 'function') {
             window.bwUploadImgClicked = function (item) {
+                if (item.files.length == 0)
+                    return;
+                $('#bw-ori-img-container').empty();
+
+                var files = item.files;
+                for (let i = 0; i < files.length; ++i) {
+                    let imgDom = $('#bw-ori-img-wrapper').find('span').clone();
+                    $('#bw-ori-img-container').append(imgDom);
+                }
+                //注意 onload 是异步的,所以加载的次序可能和files里面原来的顺序不一样
+                for (let i = 0; i < files.length; ++i) {
+                    let reader = new FileReader();
+                    reader.onload = function (e) {
+                        let t = new Image;
+                        t.onload = function () {
+                            $('#bw-ori-img-container').find('img').eq(i).attr('src', t.src).data({
+                                'srcByte': e.target.result,
+                                'offset': files[i].type.length + 13,
+                                'width': this.width,
+                                'height': this.height
+                            });
+                        }
+                        t.src = e.target.result;
+                    };
+                    reader.readAsDataURL(files[i]);
+                }
+                $('#bw-ori-img-container').find('img').eq(0).addClass('img-selected');
+                $(item).data('selected-image-index', 0)
+                $('#use-ori-img').prop('disabled', false);
+
                 window.imgCrop.readImg(item.files[0]);
             }
         }
@@ -330,7 +483,15 @@
         if (typeof bwSaveCropImg !== 'function') {
 
             window.bwSaveCropImg = function () {
-                var data = window.imgCrop.getCroppedImg();
+                var data, offset;
+                if ($('#use-ori-img').prop('checked')) {
+                    let $selectedImg = $('#bw-ori-img-container').find('.img-selected');
+                    data = $selectedImg.data('srcByte');
+                    offset = $selectedImg.data('offset');
+                } else {
+                    data = window.imgCrop.getCroppedImg($('#compress-check-box').prop('checked'));
+                    offset = 23;
+                }
                 if (data == undefined) {
                     alert("没有图片");
                     return;
@@ -338,22 +499,56 @@
                 var dom = $('li', '#bw-crop-img-wrapper').clone();
                 $(dom).find('img')[0].src = data;
                 $(dom).find('img')[0].dataset.srcByte = data;
+                $(dom).find('img')[0].dataset.offset = offset;
+                dom.find('.img-ratio-info').eq(0).find('span').eq(0).text($('#ratio-info').find('input').eq(0).val()).end().eq(1).text($('#ratio-info').find('input').eq(1).val());
+
+
                 $('ul', '#bw-cropped-img-container').append(dom);
+
+                <c:if test="${not empty fillInfoHolderWhenSave}">
+                if (typeof ${fillInfoHolderWhenSave} !== "function") {
+                    alert("fillInfoHolderWhenSave is not a function");
+                    return;
+                } else {
+                    ${fillInfoHolderWhenSave}(dom);
+                }
+                </c:if>
+                var currentImageIndex = $('#img-input').data('selected-image-index');
+                if (currentImageIndex < $('#img-input').get(0).files.length - 1) {
+                    <c:if test="${not empty clearImageInfoInput}">
+                    if (typeof ${clearImageInfoInput} === 'function')
+                        ${clearImageInfoInput}()
+                    </c:if>
+                    window.imgCrop.readImg($('#img-input').get(0).files[currentImageIndex + 1]);
+                    $('#img-input').data('selected-image-index', currentImageIndex + 1);
+                    $('#ratio-info').find('input').eq(0).trigger('change');
+                    $('#bw-ori-img-container').find('img').removeClass('img-selected').eq(currentImageIndex + 1).addClass('img-selected');
+                }
             };
         }
 
         if (typeof bwFinishCropImg !== 'function') {
 
             window.bwFinishCropImg = function (finishCropCallBack) {
-
-                if (typeof finishCropCallBack === 'undefined') {
+                if (typeof finishCropCallBack !== 'function') {
                     alert("finish crop call back is undefined !")
                     return;
                 }
                 var croppedArray = $('img', '#bw-cropped-img-container').map(function () {
                     return this.dataset.srcByte;
                 }).get();
-                finishCropCallBack(croppedArray);
+                $('#bw-cropped-img-container').data({
+                    'width': parseInt($('#ratio-info').find('input').eq(0).val()),
+                    'height': parseInt($('#ratio-info').find('input').eq(1).val())
+                });
+                <c:if test="${ not empty checkInputCallBack}">
+                if (typeof ${checkInputCallBack} === 'function') {
+                    if (!${checkInputCallBack}($('#bw-cropped-img-container'))) {
+                        return;
+                    }
+                }
+                </c:if>
+                finishCropCallBack(croppedArray, $('#bw-cropped-img-container'));
 
                 window.bwCloseUploadPopUp(${doAfterPopUpClose});
             };
@@ -371,66 +566,77 @@
     <div id="bw-upload-img-overlay">
         <div id="bw-upload-img-pop-up" data-upload="">
             <a onclick="bwCloseUploadPopUp(${doAfterPopUpClose})">&times;</a>
-            <canvas>
-            </canvas>
-            <div id="bw-edit-img-option">
-                <div class="form-horizontal">
-                    <div class="control-group">
-                        <label class="control-label">样式:</label>
+            <div style="display: inline-block">
+                <canvas>
+                </canvas>
+                <h4>原图:</h4>
+                <div id="bw-ori-img-container">
 
-                        <div class="controls">
-                            <select id="img-style-select" onchange="bwImageRatioChanged(this)">
-                                <c:forEach items="${ratioNames}" varStatus="i" var="name">
-                                    <option value="${i.index}">${name}</option>
-                                </c:forEach>
-                            </select>
-                        </div>
-                    </div>
-                    <div class="control-group">
-                        <label class="control-label">原始图片信息:</label>
-
-                        <div class="controls">
-                            <label style="margin-top: 5px"></label>
-                        </div>
-                    </div>
-                    <div class="control-group">
-                        <label class="control-label">图片缩放比例:</label>
-
-                        <div class="controls">
-                            <input type="text" placeholder="图片缩放比例">
-                        </div>
-                    </div>
-                    <div class="control-group">
-                        <label class="control-label">图片截取比例:</label>
-
-                        <div class="controls">
-                            <input type="text" placeholder="图片截取比例">
-                        </div>
-                    </div>
-                    <div class="control-group">
-                        <label class="control-label">上传图片:</label>
-
-                        <div class="controls">
-                            <input type="file" onchange="bwUploadImgClicked(this)">
-                        </div>
-                    </div>
-                    <div class="control-group">
-                        <div class="controls">
-                            <a class="btn btn-primary" onclick="bwCloseUploadPopUp(${doAfterPopUpClose})">取消</a>
-                            <a class="btn btn-primary" onclick="bwSaveCropImg()">保存</a>
-                            <a class="btn btn-primary" onclick="bwFinishCropImg(${doAfterFinishCropImg})">完成</a>
-                        </div>
-                    </div>
+                </div>
+                <h4>裁剪结果:</h4>
+                <div id="bw-cropped-img-container">
+                    <ul class="ul-sortable"></ul>
                 </div>
             </div>
-            <div id="bw-cropped-img-container">
-                <ul class="ul-sortable"></ul>
+            <div id="bw-edit-img-option">
+                <div class="form-horizontal">
+                    <bw:controlgrouptemplate label="样式">
+                        <select id="img-style-select" onclick="bwImageRatioChanged(this)">
+                            <c:forEach items="${ratioOptions}" var="keySet">
+                                <option value="${keySet.key.toString()}">${keySet.key.toString()}</option>
+                            </c:forEach>
+                        </select>
+                    </bw:controlgrouptemplate>
+                    <bw:controlgrouptemplate label="原始图片信息">
+                        <label style="margin-top: 5px"></label>
+                    </bw:controlgrouptemplate>
+                    <bw:controlgrouptemplate label="是否压缩">
+                        <input type="checkbox" checked="checked" id="compress-check-box">
+                    </bw:controlgrouptemplate>
+
+                    <bw:controlgrouptemplate label="是否使用原图">
+                        <input type="checkbox" id="use-ori-img" disabled="disabled">
+                    </bw:controlgrouptemplate>
+                    <bw:controlgrouptemplate label="图片缩放比例" id="scale-range">
+                        <input type="range" min="0" max="1" step="0.05">
+                        <label></label>
+                    </bw:controlgrouptemplate>
+                    <bw:controlgrouptemplate label="自定义截取宽高" id="ratio-info">
+                        <input type="text" placeholder="宽" class="m-w-100">
+                        <input type="text" placeholder="高" class="m-w-100">
+                        <label class="m-w-100"></label>
+                    </bw:controlgrouptemplate>
+                    <bw:controlgrouptemplate label="上传图片">
+                        <input type="file" onchange="bwUploadImgClicked(this)" id="img-input" multiple="multiple">
+                    </bw:controlgrouptemplate>
+                    <c:if test="${not empty imageInfoInput}">
+                        <jsp:invoke fragment="imageInfoInput"/>
+                    </c:if>
+                    <bw:controlgrouptemplate>
+                        <a class="btn btn-primary" onclick="bwCloseUploadPopUp(${doAfterPopUpClose})">取消</a>
+                        <a class="btn btn-primary" onclick="bwSaveCropImg()">保存</a>
+                        <a class="btn btn-primary" onclick="bwFinishCropImg(${doAfterFinishCropImg})">完成</a>
+                    </bw:controlgrouptemplate>
+                </div>
             </div>
+
         </div>
-        <div id="bw-crop-img-wrapper" style="display: none">
+        <div id="bw-ori-img-wrapper" class="not-display">
+            <span>
+                <img src="" class="p-d-10">
+            </span>
+        </div>
+        <div id="bw-crop-img-wrapper" class="not-display">
             <li>
-                <img src="" data-src-byte="">
-                <a onclick="bwRemoveSavedCropImg(this)">&times;</a>
+                <img src="" data-src-byte="" data-offset="">
+                <a onclick="bwRemoveSavedCropImg(this)" class="remove-cropped-img">&times;</a>
+                <div class="img-ratio-info">
+                    <span></span>
+                    <span></span>
+                </div>
+                <c:if test="${not empty imageInfoHolder}">
+                    <jsp:invoke fragment="imageInfoHolder"/>
+                </c:if>
             </li>
         </div>
     </div>
